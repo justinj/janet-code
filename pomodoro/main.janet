@@ -20,9 +20,13 @@
    (load-font-ex "/System/Library/Fonts/Supplemental/Arial.ttf" 20))
 (set-texture-filter (get-font-texture font) :bilinear)
 
+(defn inner-radius [squeezed]
+  (if squeezed 40 50))
+
 (defn interval-duration [kind]
   (case kind
-    :pomodoro (* 60 25)
+    :pomodoro (* 60 1)
+    # :pomodoro (* 60 25)
     :cooldown (* 60 5)))
 
 (defn kind/next [kind]
@@ -47,6 +51,8 @@
 
 (def state/initial (state/paused (interval-duration :pomodoro) :pomodoro))
 (var state state/initial)
+
+(var rendered-inner-radius (inner-radius false))
 
 (defn remaining [state]
   (case (state :mode)
@@ -103,8 +109,56 @@
       :running [0.9 0.3 0.3]
       :paused [0.7 0.5 0.5]))
 
-  (draw-ring screen-center 50 80 270 (- 270 wedge-size) 40 color)
+  (def squeezed (key-down? :space))
+  (def inner (inner-radius squeezed))
+
+  (set rendered-inner-radius
+       (/ (+ rendered-inner-radius inner) 2))
+
+  (def annulus-width 30)
+
+  (draw-ring
+    screen-center
+    rendered-inner-radius
+    (+ rendered-inner-radius annulus-width)
+    270
+    (- 270 wedge-size)
+    40
+    color)
   (draw-text-centered (remaining-str remaining-seconds) screen-center color)
+
+  (def annulus-middle 
+    (+ rendered-inner-radius (/ annulus-width 2)))
+
+  (draw-circle
+    (math/floor (screen-center 0))
+    (math/floor (- (screen-center 1) annulus-middle))
+    (/ annulus-width 2)
+    color)
+
+
+  (def wedge-angle
+    (-> wedge-size
+        -
+        (/ 360)
+        (* (* 2 math/pi))))
+  (def cx (-> wedge-angle
+              (- (/ math/pi 2))
+              math/cos
+              (* annulus-middle)
+              (+ (screen-center 0))))
+  (def cy (-> wedge-angle
+              (- (/ math/pi 2))
+              math/sin
+              (* annulus-middle)
+              (+ (screen-center 1))))
+
+  (draw-circle
+    (math/floor cx)
+    (math/floor cy)
+    (/ annulus-width 2)
+    color)
+
 
   (end-drawing))
 
