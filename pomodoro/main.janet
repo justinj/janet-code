@@ -25,8 +25,7 @@
 
 (defn interval-duration [kind]
   (case kind
-    :pomodoro (* 60 1)
-    # :pomodoro (* 60 25)
+    :pomodoro (* 60 25)
     :cooldown (* 60 5)))
 
 (defn kind/next [kind]
