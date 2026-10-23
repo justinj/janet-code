@@ -3,43 +3,62 @@
 (def window-width 400)
 (def window-height 400)
 
+# I'd like to load this from a file on disk, maybe I can just dump/load it
+# directly somehow.
+(def pomodoro-record
+  @[
+    {:conclusion-time (os/clock)}
+    ])
+
 (set-config-flags :msaa-4x-hint)
 (def screen-center [(/ window-width 2) (/ window-height 2)])
 
-(init-window 400 400 "Pomobaby")
+(init-window window-width window-height "Pomobaby")
 (set-target-fps 60)
 
 (def font
-   (load-font-ex "/System/Library/Fonts/Supplemental/Arial.ttf" 32))
+   (load-font-ex "/System/Library/Fonts/Supplemental/Arial.ttf" 20))
 (set-texture-filter (get-font-texture font) :bilinear)
 
-# The total time, in seconds.
-(def pomodoro-time (* 60 0.5))
+(defn interval-duration [kind]
+  (case kind
+    :pomodoro (* 60 25)
+    :cooldown (* 60 5)))
 
-(defn state/paused [remaining]
+(defn kind/next [kind]
+  (case kind
+    :pomodoro :cooldown
+    :cooldown :pomodoro))
+
+(defn state/paused [remaining kind]
   {:mode :paused
-    :remaining remaining})
+   :remaining remaining
+   :kind kind})
 
-(defn state/running [consumed started-at]
+(defn state/running [consumed started-at kind]
   {:mode :running
-    :consumed consumed
-    :started-at started-at})
+   :consumed consumed
+   :started-at started-at
+   :kind kind})
 
-(def state/initial (state/paused pomodoro-time))
+(defn state/complete [kind]
+  {:mode :complete
+   :kind kind})
 
+(def state/initial (state/paused (interval-duration :pomodoro) :pomodoro))
 (var state state/initial)
 
-(var start (os/clock))
 (defn remaining [state]
   (case (state :mode)
+    :complete 0
     :paused (state :remaining)
-    :running (- pomodoro-time
+    :running (- (interval-duration (state :kind))
                 (+ (state :consumed) (- (os/clock) (state :started-at))))))
 
-(defn remaining-str [state]
-  (def rem (math/ceil (remaining state)))
-  (def rem-seconds (mod rem 60))
-  (def rem-minutes (div rem 60))
+(defn remaining-str [rem]
+  (def rem-sec (math/ceil rem))
+  (def rem-seconds (mod rem-sec 60))
+  (def rem-minutes (div rem-sec 60))
   (string/format "%02d:%02d" rem-minutes rem-seconds))
 
 (def text-size 20)
@@ -52,22 +71,40 @@
 
   (clear-background [0 0 0])
 
+  (def remaining-seconds (remaining state))
+
+  (when (and (= :running (state :mode)) (<= remaining-seconds 0))
+      (set state (state/complete (kind/next (state :kind)))))
+
   (when (key-pressed? :space)
-    (case (state :mode)
-      :paused (set state (state/running (- pomodoro-time (state :remaining)) (os/clock)))
-      :running (set state (state/paused (remaining state)))))
+    (match state
+      {:mode :complete
+       :kind kind}
+      (set state
+           (state/paused (interval-duration kind) kind))
+      {:mode :paused
+       :kind kind
+       :remaining remaining}
+      (set state
+           (state/running
+             (- (interval-duration kind) remaining)
+             (os/clock) kind))
+      {:mode :running :kind kind} 
+        (set state (state/paused (remaining state) kind))))
 
   (when (key-pressed? :r)
-    (set state state/initial))
+    (def new-kind (kind/next (state :kind)))
+    (set state (state/paused (interval-duration new-kind) new-kind)))
 
-  (def wedge-size (math/ceil (* (/ (remaining state) pomodoro-time) 360)))
+  (def wedge-size (math/ceil (* (/ remaining-seconds (interval-duration (state :kind))) 360)))
   (def color
     (case (state :mode)
+      :complete [0.3 0.9 0.3]
       :running [0.9 0.3 0.3]
       :paused [0.7 0.5 0.5]))
 
-  (draw-ring screen-center 30.0 50.0 270 (- 270 wedge-size) 40 color)
-  (draw-text-centered (remaining-str state) screen-center color)
+  (draw-ring screen-center 50 80 270 (- 270 wedge-size) 40 color)
+  (draw-text-centered (remaining-str remaining-seconds) screen-center color)
 
   (end-drawing))
 
