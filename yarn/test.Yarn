@@ -1,0 +1,17 @@
+title: one
+position: 63,-1165
+---
+<<foo bar baz>>
+PersonOne: Hello there!
+<<foo bar baz>>
+PersonTwo: Hello
+===
+
+title: two
+position: 86,-918
+---
+<<baz bar foo>>
+PersonThree: Hello there!
+<<a b c>>
+PersonFour: Hello
+===
