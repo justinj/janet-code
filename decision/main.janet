@@ -2,63 +2,64 @@
 
 # Proposer sends prepare to everybody except himself, then waits.
 
+(defn wait-for-all [kind num-receivers]
+  (var result @[])
+  (while (< (length result) num-receivers)
+    (let [msg (recv)]
+      (when (= ((msg :body) :kind) kind)
+        (array/push result msg))))
+  result)
+
 (defn proposer [v]
   (fn [env]
     (def num-receivers (dec (env :node-count)))
-    (for epoch 0 100
+    (var decided false)
+    (var epoch 0)
+    (while (not decided)
+      (++ epoch)
       (send {:kind :prepare
              :value v
              :epoch epoch})
 
-      # now wait for all the replies
-      (def replies @{})
-      (while (< (length replies) num-receivers)
-        (let [msg (recv)]
-          (case ((msg :body) :kind)
-            :ack-prepare
-            (case ((msg :body) :result)
-              :accept (put replies (msg :src) true)
-              :reject (put replies (msg :src) false)))))
-      (if (all |$ replies)
+      (def replies (wait-for-all :ack-prepare num-receivers))
+
+      (if (all |(= :accept (($ :body) :result)) replies)
         (do
-          (send {:kind :commit
-                 :epoch epoch})
+          (send {:kind :commit :epoch epoch})
           (decide v)
-          (break))
-        # Someone rejected, tell them all to abort.
+          (set decided true))
         (do
           (send {:kind :abort})
-          # Now wait for everyone to acknowledge my abort.
-          (var acks 0)
-          (while (< acks num-receivers)
-            (let [msg (recv)]
-              (case ((msg :body) :kind)
-                :ack-abort (++ acks))))
-          )))))
+          (wait-for-all :ack-abort num-receivers))))))
 
 (defn receiver []
   (fn [env]
     (var decided false)
     (while (not decided)
-      (def msg (recv))
-      (match (msg :body)
+      (def {:body body} (recv))
+      (match body
         {:kind :prepare :value v :epoch epoch}
         (do
           (send {:kind :ack-prepare
-                 :result (if (< (math/random) 0.5) :accept :reject)})
+                 :result (if (< (math/random) 0.5)
+                           :accept
+                           :reject)})
           (var aborted false)
           (while (and (not decided) (not aborted))
-            (let [next-msg (recv)]
-              (case ((next-msg :body) :kind)
-                :commit (do
-                          (decide [v epoch])
-                          (set decided true))
-                :abort (do
-                         (send {:kind :ack-abort} (next-msg :src))
-                         (set aborted true))))))))))
+            (def {:body msg :src src} (recv))
+
+            (case (msg :kind)
+              :commit (do
+                        (decide v)
+                        (set decided true))
+              :abort (do
+                       (send {:kind :ack-abort} src)
+                       (set aborted true)))))))))
 
 (run
   (proposer :v)
   (receiver)
   (receiver)
   (receiver))
+
+
