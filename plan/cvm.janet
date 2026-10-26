@@ -9,14 +9,15 @@
     (put elems v nil)
     (when (< (math/rng-uniform rng) (math/pow 0.5 weight))
       (put elems v true)
-      (when (= thresh (length elems))
+      (while (= thresh (length elems))
         (put sketch :weight (inc weight))
         (def new-elems @{})
         (eachk k elems
           (def rand (math/rng-uniform rng))
           (when (< rand 0.5)
             (put new-elems k true)))
-        (put sketch :elems new-elems)))))
+        (put sketch :elems new-elems))))
+  sketch)
 
 (defn cvm/count [sketch]
   (let [{:weight weight :elems elems} sketch]
