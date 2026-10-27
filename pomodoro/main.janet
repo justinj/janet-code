@@ -3,12 +3,34 @@
 (def window-width 400)
 (def window-height 400)
 
-# I'd like to load this from a file on disk, maybe I can just dump/load it
-# directly somehow.
+(os/setenv "TZ" "America/New_York")
+
+(pp (os/date (os/time) true))
+
 (def pomodoro-record
-  @[
-    {:conclusion-time (os/clock)}
-    ])
+  (parse (try (slurp "data.jdn") ([_] "@[]"))))
+
+(defn sync []
+  (spit "data.jdn" (string/format "%j" pomodoro-record)))
+
+(defn days-in-year [year]
+  (cond
+    (zero? (mod year 100)) 365
+    (zero? (mod year 4)) 366
+    365))
+
+(defn day-epoch [time]
+  (let [parsed (os/date time true)]
+    (+ (days-in-year (parsed :year))
+       (parsed :year-day))))
+
+(defn days-ago [time]
+  (- (day-epoch (os/time))
+     (day-epoch time)))
+
+(defn record-pomodoro [time]
+  (array/push pomodoro-record {:completion-time time})
+  (sync))
 
 (set-config-flags :msaa-4x-hint)
 (def screen-center [(/ window-width 2) (/ window-height 2)])
@@ -71,6 +93,26 @@
   (let [[w h] (measure-text-ex font text text-size 1)]
     (draw-text-ex font text [(- x (/ w 2)) (- y (/ h 2))] text-size 1 color)))
 
+# Draw the small circles that correspond to individual completions.
+(def completion-rad 5)
+(def completion-diam (* 2 completion-rad))
+(def completion-pad 2)
+
+(defn draw-completions []
+  (def completions
+    (map
+      (fn [[k v]] {:days-ago k :count (length v)})
+      (pairs
+        (group-by |(days-ago ($ :completion-time)) pomodoro-record))))
+
+  (each {:days-ago days-ago :count cnt} completions
+    (for i 0 cnt
+      (draw-circle
+        (+ completion-pad completion-rad (* (+ completion-diam completion-pad) i))
+        (+ completion-pad completion-rad (* (+ completion-diam completion-pad) days-ago))
+        completion-rad
+        [0.6 0.3 0.3]))))
+
 (while (not (window-should-close))
   (begin-drawing)
 
@@ -79,7 +121,9 @@
   (def remaining-seconds (remaining state))
 
   (when (and (= :running (state :mode)) (<= remaining-seconds 0))
-      (set state (state/complete (kind/next (state :kind)))))
+    (when (= (state :kind) :pomodoro)
+      (record-pomodoro (os/time)))
+    (set state (state/complete (kind/next (state :kind)))))
 
   (when (key-pressed? :space)
     (match state
@@ -96,6 +140,9 @@
              (os/clock) kind))
       {:mode :running :kind kind} 
         (set state (state/paused (remaining state) kind))))
+
+  (when (key-pressed? :a)
+    (record-pomodoro (os/time)))
 
   (when (key-pressed? :r)
     (def new-kind (kind/next (state :kind)))
@@ -115,6 +162,8 @@
        (/ (+ rendered-inner-radius inner) 2))
 
   (def annulus-width 30)
+
+  (draw-completions)
 
   (draw-ring
     screen-center
