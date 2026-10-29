@@ -2,15 +2,22 @@
 
 (defn new []
   @[matrix/id])
-
 (defdyn *stack*)
-
 (setdyn *stack* (new))
 
 (defn- apply-mat [stack mat]
   (array/push
     stack
-    (matrix/mul mat (last stack))))
+    (matrix/mul mat (array/pop stack))))
+
+(defn push []
+  (array/push
+    (dyn *stack*)
+    (last (dyn *stack*))))
+
+(defn pop []
+  (array/pop
+    (dyn *stack*)))
 
 (defn translate [x y]
   (apply-mat
@@ -31,9 +38,10 @@
   (matrix/transform (last (dyn *stack*))
              [x y]))
 
-(translate 1 0)
-(scale 2)
-(rotate math/pi)
 
-(pp
-  (point 1 0))
+# (translate 1 0)
+# (scale 2)
+# (rotate math/pi)
+#
+# (pp
+#   (point 1 0))
